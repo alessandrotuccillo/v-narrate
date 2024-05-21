@@ -16,19 +16,19 @@ class SimulationConfig(AbstractSimulaitonConfig):
   dt: float = 0.05 # simulation timestep. Must be equal to that of controller
   frame_width: int = 1024
   frame_height: int = 1024
-  frame_target_position: List[float] = [0.0, -0.1, 0.]
-  frame_distance: float = 1.6
-  frame_yaw: int = -125
-  frame_pitch: int = -30
+  frame_target_position: List[float] = [0.0, 0.0, 0.]
+  frame_distance: float = 1.2
+  frame_yaw: int = 65
+  frame_pitch: int = -18
   method:str = 'ours'
 
 
 class LLMConfig(AbstractLLMConfig):
   def __init__(self, avatar:str, task:str=None) -> None:
-    self.avatar: str = avatar
+    self.avatar: str = avatar #TP or OD as specified in robot.py
     self.mock_task = None # TODO wtf this is shit
     self.prompt: str = PROMPTS[avatar][task] # TODO: this is bad. Only works for Optimization now
-  model_name: str = "gpt-4-0125-preview"
+  model_name: str = "gpt-4-turbo"
   streaming: bool = False
   temperature: float = 0.9
   max_tokens: int = 1000

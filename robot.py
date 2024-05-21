@@ -44,9 +44,9 @@ class Robot(AbstractRobot):
 		
 		return pretty_msg
 	
-	def _get_instruction(self, query:str) -> str:
-		instruction = f"objects = {[o['name'] for o in self.objects_info]}\n"
-		instruction += f"# Query: {query}"
+	def _get_instruction(self, query:str) -> str: # this function uses objects_info as given by the environment
+		#instruction = f"objects = {[o['name'] for o in self.objects_info]}\n"
+		instruction = f"# Query: {query}"
 		return instruction
 
 	def _open_gripper(self):
@@ -70,7 +70,7 @@ class Robot(AbstractRobot):
 
 	def plan_task(self, user_message:str, base64_image=None) -> str:
 		""" Runs the Task Planner by passing the user message and the current frame """
-		plan = self.TP.run(self._get_instruction(user_message), base64_image, short_history=True)
+		plan = self.TP.run(self._get_instruction(user_message), base64_image, short_history=True)  #self._get_instruction(user_message)
 		print(f"\33[92m {plan} \033[0m \n")
 		return plan
 	
@@ -96,8 +96,8 @@ class Robot(AbstractRobot):
 		""" Applies and returns the optimization designed by the Optimization Designer """
 		# if custom function is called apply that
 
-		if self.is_robot_busy(): 
-			return None
+		#if self.is_robot_busy(): 
+		#	return None
 				
 		self.t_prev_task = time()
 
@@ -117,9 +117,10 @@ class Robot(AbstractRobot):
 		for i in range(self.cfg.MAX_OD_ATTEMPTS):
 			try:
 				# design optimization functions
-				if i == 0:
-					query += "The previous optimization was not feasible. Please try again with a simpler formulation. You can assume the size of all objects is the same."
-				optimization = self.OD.run(self._get_instruction(query), short_history=True)
+				#if i == 0:
+					#query += "The previous optimization was not feasible. Please try again with a simpler formulation. You can assume the size of all objects is the same."
+				optimization = self.OD.run(query, short_history=True, flag=False)
+				print(f"\33[92m {query} \033[0m \n")
 				print(f"\33[92m {optimization} \033[0m \n")
 				if self.cfg.method == "objective":
 					optimization["equality_constraints"] = []

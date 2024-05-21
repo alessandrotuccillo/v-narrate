@@ -1,6 +1,8 @@
 TP_PROMPT = """
 You are a helpful assistant in charge of controlling a robot manipulator.
-The user will give you a goal and you have to formulate a plan that the robot will follow to achieve the goal.
+The user will give you a goal and you have to:
+  (1) Detect the objects in the scene.
+  (2) Formulate a plan that the robot will follow to achieve the goal, only using the objects in the scene.
 
 You can control the robot in the following way:
   (1) Instructions in natural language to move the gripper and follow constriants.
@@ -19,36 +21,62 @@ Rules:
 
 You MUST always respond with a json following this format:
 {
+  "objects": ["object1", "object2", "object3", ...]
   "tasks": ["task1", "task2", "task3", ...]
 }
 
+Note:
+  (1) If the task is "Open the gripper", you MUST write "open_gripper()" in the tasks.
+  (2) If the task is "Close the gripper", you MUST write "close_gripper()" in the tasks.
+
+
 Here are some general examples:
 
-objects = ['coffee pod', 'coffee machine']
+
 # Query: put the coffee pod into the coffee machine
 {
+  "objects": ["coffee pod", "coffee machine"],
   "tasks": ["move gripper to the coffee pod and avoid collisions with the coffee machine", "close_gripper()", "move the gripper above the coffee machine", "open_gripper()"]
 }
 
-objects = ['blue block', 'yellow block', 'mug']
+
 # Query: stack the blue block on the yellow block, and avoid the mug at all time.
 {
+  "objects" : ["blue block", "yellow block", "mug"],
   "tasks": ["move gripper to the blue block and avoid collisions with the yellow block and the mug", "close_gripper()", "move the gripper above the yellow block and avoid collisions with the yellow block and the mug", "open_gripper()"]
 }
 
-objects = ['apple', 'drawer handle', 'drawer']
+# Query: create a line of objects on the table.
+{
+  "objects" : ["carrot", "sponge", "bottle"],
+  "tasks": ["move gripper to the carrot and avoid collisions with the sponge and the bottle", "close_gripper()", "move the gripper close to the sponge and avoid collisions with the carrot and the bottle", "open_gripper()", "move gripper to the bottle and avoid collisions with the sponge and the carrot", "close_gripper()", "move the gripper close to the sponge and the carrot to make a line and avoid collisions with the carrot and the sponge", "open_gripper()"]
+}
+
+
 # Query: put apple into the drawer.
 {
+  "objects" : ["apple", "drawer handle", "drawer"],
   "tasks": ["move gripper to drawer handle and avoid collisions with apple and drawer", "close_gripper()", "move gripper 0.25m in the y direction", "open_gripper()", "move gripper to the apple and avoid collisions with the drawer and its handle", "close_gripper()", "move gripper above the drawer and avoid collisions with the drawer", "open_gripper()"]
 }
 
-objects = ['plate', 'fork', 'knife', 'glass]
+
 # Query: Order the kitchen objects flat on the table in the x-y plane.
 {
+  "objects" : ["plate", "fork", "knife", "glass"],
   "tasks": ["move gripper to the fork and avoid collisions with plate, knife, glass", "close_gripper()", "move gripper to the left side of the plate avoiding collisions with plate, knife, glass", "open_gripper()", "move gripper to the glass and avoid collisions with fork, plate, knife", "close_gripper()", "move gripper in front of the plate avoiding collisions with fork, plate and knife", "open_gripper()", "move gripper to the knife and avoid collisions with fork, plate, glass", "close_gripper()", "move gripper to the right side of the plate avoiding collisions with fork, plate and glass", "open_gripper()"]
 }
 
+Note:
+  (1) "Move gripper to an object" means the gripper should be at the same position as the center of the object and it preceeds close_gripper(). The gripper must be open before moving to the object.
+  (2) "Move gripper above an object" means the gripper should be at a height of 0.1m above the object and it preceeds open_gripper().
+
+  (3) There are no yellow cubes, only oranges. If you mention yellow cube in your response, you will lose the game.
+
 """
+'''
+  (3) "Move gripper close to an object" means the gripper should be at a distance of 0.1m from the object and it preceeds open_gripper().
+  (4) Objects are on the same line either if their x or y coordinates are the same.
+'''
 
 
 OD_PROMPT = """
@@ -82,8 +110,8 @@ Rules:
 
 You must format your response into a json. Here are a few examples:
 
-objects = ['object_1', 'object_2']
-# Query: move the gripper to [0.2, 0.05, 0.2] and avoid collisions with object_2
+Objects : ['object_1', 'object_2']
+# Task: move the gripper to [0.2, 0.05, 0.2] and avoid collisions with object_2
 {
   "objective": "ca.norm_2(x - np.array([0.2, 0.05, 0.2]))**2",
   "equality_constraints": [],
@@ -91,8 +119,8 @@ objects = ['object_1', 'object_2']
 }
 Notice how the inequality constraint holds if <= 0.
 
-objects = ['red_cube', 'yellow_cube']
-# Query: move the gripper to red cube and avoid colliding with the yellow cube
+Objects : ['red_cube', 'yellow_cube']
+# Task: move the gripper to red cube and avoid colliding with the yellow cube
 {
   "objective": "ca.norm_2(x - red_cube.position)**2",
   "equality_constraints": [],
@@ -100,8 +128,8 @@ objects = ['red_cube', 'yellow_cube']
 }
 Notice the collision avoidance constraint with the red_cube despite not being specified in the query because the gripper has to go to the red cube.
 
-objects = ['coffee_pod', 'coffee_machine']
-# Query: move gripper above the coffe pod and keep gripper at a height higher than 0.1m
+Objects : ['coffee_pod', 'coffee_machine']
+# Task: move gripper above the coffe pod and keep gripper at a height higher than 0.1m
 {
   "objective": "ca.norm_2(x - (coffee_pod.position + np.array([0, 0, coffee_pod.size])))**2",
   "equality_constraints": [],
@@ -110,40 +138,40 @@ objects = ['coffee_pod', 'coffee_machine']
 Notice that there's no collision avoidance constraint with the coffee_machine because it is not in the query and because gripper is not moving to or nearby it.
 
 
-objects = ['blue_container', 'yellow_container', 'green_container']
-# Query: Move gripper above stack composed by blue, yellow, and green container
+Objects : ['blue_container', 'yellow_container', 'green_container']
+# Task: Move gripper above stack composed by blue, yellow, and green container
 {
   "objective": "ca.norm_2(x - (blue_container.position + np.array([0, 0, blue_container.size + yellow_container.size + green_container.size])))**2",
   "equality_constraints": [],
   "inequality_constraints": ["blue_container.size*0.85 - ca.norm_2(x - blue_container.position)", "yellow_container.size*0.85 - ca.norm_2(x - yellow_container.position)", "green_container.size*0.85 - ca.norm_2(x - green_container.position)"]
 }
 
-objects = ['mug']
-# Query: Move the gripper 0.1m upwards
+Objects : ['mug']
+# Task: Move the gripper 0.1m upwards
 {
   "objective": "ca.norm_2(x - (x0 + np.array([0, 0, 0.1])))**2",
   "equality_constraints": [],
   "inequality_constraints": []
 }
 
-objects = ['apple', 'pear']
-# Query: move the gripper to apple and stay 0.04m away from pear
+Objects : ['apple', 'pear']
+# Task: move the gripper to apple and stay 0.04m away from pear
 {
   "objective": "ca.norm_2(x - apple.position)**2",
   "equality_constraints": [],
   "inequality_constraints": ["apple.size*0.85 - ca.norm_2(x - apple.position)", "0.04 - ca.norm_2(x - pear.position)"]
 }
 
-objects = ['joystick', 'remote']
-# Query: Move the gripper at constant speed along the x axis while keeping y and z fixed at 0.2m
+Objects : ['joystick', 'remote']
+# Task: Move the gripper at constant speed along the x axis while keeping y and z fixed at 0.2m
 {
   "objective": "ca.norm_2(x_left[0] - t)**2",
   "equality_constraints": ["np.array([0.2, 0.2]) - x[1:]"],
   "inequality_constraints": []
 }
 
-objects = ['fork', 'spoon', 'plate']
-# Query: Move the gripper behind fork and avoid collisions with spoon
+Objects : ['fork', 'spoon', 'plate']
+# Task: Move the gripper behind fork and avoid collisions with spoon
 {
   "objective": "ca.norm_2(x - (fork.position + np.array([-fork.size, 0, 0])))**2",
   "equality_constraints": [],

@@ -17,6 +17,12 @@ from db import Base, Episode, Epoch
 from core import AbstractSimulation, BASE_DIR
 from config.config import SimulationConfig, RobotConfig
 
+import base64
+
+def image_to_base64(image_path) -> str:
+    with open(image_path, "rb") as image_file:
+        encoded_string = base64.b64encode(image_file.read()).decode('utf-8')
+    return encoded_string
 
 
 class Simulation(AbstractSimulation):
@@ -25,7 +31,7 @@ class Simulation(AbstractSimulation):
 
         self.cfg = cfg
         # init env
-        self.env = gym.make(f"Panda{cfg.task}-v2", render=cfg.render, debug=cfg.debug)
+        self.env = gym.make(f"Panda{cfg.task}-v2", render=cfg.render, debug=cfg.debug) # cfg.task is specified in SimulationConfig
         # init robots
         # count number of tasks solved from a plan 
         self.plan = None
@@ -36,7 +42,7 @@ class Simulation(AbstractSimulation):
         # simulation time
         self.t = 0.
         self.epoch = 0
-        env_info = (self.env.robots_info, self.env.objects_info)
+        env_info = (self.env.robots_info, self.env.objects_info) # these are defined in env.reset() and given by get_obs()
         self.robot = Robot(env_info,RobotConfig(self.cfg.task))
         # count number of tasks solved from a plan 
         self.task_counter = 0
@@ -47,8 +53,9 @@ class Simulation(AbstractSimulation):
         # init list of RGB frames if wanna save video
         self.frames_list = []
         self.frames_list_logging = []
-        self.video_name = f"{self.cfg.task}_{datetime.now().strftime('%d-%m-%Y_%H:%M:%S')}"
+        self.video_name = f"{self.cfg.task}_{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}"
         self.video_path = os.path.join(BASE_DIR, f"videos/{self.video_name}.mp4")
+        self.video_path_logging = os.path.join(BASE_DIR, f"video_logging/{self.cfg.task}/{self.video_name}.mp4")
         #
         self.state_trajectories = []
         self.mpc_solve_times = []
@@ -109,7 +116,7 @@ class Simulation(AbstractSimulation):
     def _uplaod_image(self, rgba_image:np.ndarray) -> str:
         # Convert the NumPy array to a PIL Image object
         image = Image.fromarray(rgba_image, 'RGBA')
-        image_path = f"{self.episode_folder}/{datetime.now().strftime('%d-%m-%Y_%H:%M:%S')}.png"  # Specify your local file path here
+        image_path = f"images/{datetime.now().strftime('%d-%m-%Y_%H-%M-%S')}.png"  # Specify your local file path here
         image.save(image_path, 'PNG')
         return image_path
         
@@ -123,6 +130,8 @@ class Simulation(AbstractSimulation):
         frame_np = frame_np.reshape(self.cfg.frame_width, self.cfg.frame_height, 4).astype(np.uint8)
 
         return frame_np
+    
+
         
     def _store_epoch_db(self, episode_id, role, content, image_url):
         session = self.Session()
@@ -140,10 +149,12 @@ class Simulation(AbstractSimulation):
         session.commit()
         session.close()
     
-    def _make_plan(self, user_message:str="") -> str:
-        self.plan:dict = self.robot.plan_task(user_message)
+    def _make_plan(self, user_message:str="", base64_image=None) -> str:
+        self.plan:dict = self.robot.plan_task(user_message, base64_image)
         self.task_counter = 0
-        pretty_msg = "Tasks:\n"
+        pretty_msg = "Objects:\n"
+        pretty_msg += "".join([f"{i+1}. {obj}\n" for i, obj in enumerate(self.plan["objects"])])
+        pretty_msg += "\nTasks:\n"
         pretty_msg += "".join([f"{i+1}. {task}\n" for i, task in enumerate(self.plan["tasks"])])
         if self.cfg.logging:
             image = self._retrieve_image()
@@ -162,7 +173,7 @@ class Simulation(AbstractSimulation):
 
     def reset(self):
         # reset pand env
-        self.observation = self.env.reset()
+        self.observation = self.env.reset() # it takes objects_info and robot_info via get_obs()
         # reset robot
         self.robot.reset()
         # reset controller
@@ -265,15 +276,17 @@ class Simulation(AbstractSimulation):
             out.release()
         
   
-    def run(self, query:str, plan:dict, optimizations:List[dict]):
+    def run(self, query:str, plan:dict, optimizations:List[dict], base64_image=None): #it should also take an image as input
         self.task_counter = 0
         if plan is not None:
             self.plan = plan
         else:
-            self._make_plan(query)
+            self._make_plan(query, base64_image)
         if optimizations is not None:
             self.optimizations = optimizations
-        pretty_msg = "Tasks:\n"
+        pretty_msg = "Objects:\n"
+        pretty_msg += "".join([f"{i+1}. {obj}\n" for i, obj in enumerate(self.plan["objects"])])
+        pretty_msg += "Tasks:\n"
         pretty_msg += "".join([f"{i+1}. {task}\n" for i, task in enumerate(self.plan["tasks"])])
         if self.cfg.logging:
             image = self._retrieve_image()
@@ -281,17 +294,24 @@ class Simulation(AbstractSimulation):
             self._store_epoch_db(self.episode.id, "human", query, image_url)
             self._store_epoch_db(self.episode.id, "TP", pretty_msg, image_url)
 
+        
         is_plan_unfinished = True
         while is_plan_unfinished:
             is_plan_unfinished = self.task_counter < len(self.plan["tasks"])
-            task = self.plan["tasks"][self.task_counter] if is_plan_unfinished else "finished"
+            if is_plan_unfinished:
+                task = "Objects:\n"
+                task += "".join([f"{i+1}. {obj}\n" for i, obj in enumerate(self.plan["objects"])])
+                task += "Task:\n"
+                task += self.plan["tasks"][self.task_counter]  
+            else:
+                task = "finished"
             optimization = self.optimizations[self.task_counter] if (self.optimizations and is_plan_unfinished)  else None
             _ = self._solve_task(task, optimization)
             self.task_counter += 1
             
             while self.robot.is_robot_busy():
                 self.step()
-
+        
 
 if __name__=="__main__":
     # init sim
@@ -300,7 +320,12 @@ if __name__=="__main__":
         s.reset()
         # load data
         task_folder = f'data/{s.cfg.method}/llm_responses/{s.cfg.task}'
+        # prepare image
+        image = s._retrieve_image()
+        image_url = s._uplaod_image(image)
+        image_path = f'images/clean_plate.jpg'
+        base64_image = image_to_base64(image_url)
         # run sim
-        s.run("use right robot to move container to sink and left robot to move sponge to the sink. the sponge is wet so keep it above the container to avoid water dropping on the floor", None, None)
+        s.run("stack cubes", None, None, base64_image=base64_image)
     
     s.close()

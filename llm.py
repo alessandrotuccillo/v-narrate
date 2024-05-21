@@ -2,6 +2,7 @@ from time import time
 from core import AbstractLLM, AbstractLLMConfig
 
 import os
+import pickle
 import json
 import requests
 import tiktoken
@@ -14,7 +15,7 @@ from langchain.output_parsers import PydanticOutputParser
 from langchain.callbacks.base import BaseCallbackHandler
 
 
-TOKEN_ENCODER = tiktoken.encoding_for_model("gpt-4")
+TOKEN_ENCODER = tiktoken.encoding_for_model("gpt-4-vision-preview")
 
 class Message:
   def __init__(self, text, base64_image=None, role="user"):
@@ -56,7 +57,7 @@ class LLM(AbstractLLM):
     super().__init__(cfg)
 
     # init messages
-    self.messages = [Message(text=self.cfg.prompt, role="system")]
+    self.messages = [Message(text=self.cfg.prompt, role="system")] #here it specifies that we want json as output
     # request headers
     self.headers = {
       "Content-Type": "application/json",
@@ -66,7 +67,7 @@ class LLM(AbstractLLM):
   def reset(self):
     self.messages = [Message(text=self.cfg.prompt, role="system")]
 
-  def run(self, user_message:str, base64_image=None, short_history=False) -> dict:
+  def run(self, user_message:str, base64_image=None, short_history=False, flag=True) -> dict:
     # add user message to chat history
     self.messages.append(Message(text=user_message, role="user", base64_image=base64_image))
     # select the last 2 user messages and the last assistant message
@@ -80,7 +81,19 @@ class LLM(AbstractLLM):
     }
     #print([m.text for m in selected_messages])
     t0 = time()
-    response = requests.post("https://api.openai.com/v1/chat/completions", headers=self.headers, json=payload).json()
+
+    # Check if the response is in the cache
+    cache_file = 'gpt_response_cache.pkl'
+    if os.path.exists(cache_file) and flag==True:
+        # Load the response from the cache
+        with open(cache_file, 'rb') as f:
+            response = pickle.load(f)
+    else:
+        # Call the GPT API and save the response to the cache
+        response = requests.post("https://api.openai.com/v1/chat/completions", headers=self.headers, json=payload).json()
+        with open(cache_file, 'wb') as f:
+            pickle.dump(response, f)
+    #response = requests.post("https://api.openai.com/v1/chat/completions", headers=self.headers, json=payload).json()
     solve_time = time() - t0
     # retrieve text response
     try:
@@ -93,7 +106,3 @@ class LLM(AbstractLLM):
 
     AI_response["solve_time"] = solve_time
     return AI_response
-
-
-  
-

@@ -47,8 +47,8 @@ class Controller(AbstractController):
 		# simulation time
 		self.t = self.model.set_variable('parameter', 't')
 		# position of objects
-		self.objects = {} 
-		for o in self.objects_info:
+		self.objects = {}
+		for o in self.objects_info: #objects_info to not use anymore
 			position = self.model.set_variable(var_type='_p', var_name=o['name']+'_position', shape=(3,1))
 			psi = self.model.set_variable(var_type='_p', var_name=o['name']+'_psi')
 			size = self.model.set_variable(var_type='_p', var_name=o['name']+'_size')

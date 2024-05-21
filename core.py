@@ -1,6 +1,6 @@
 import os
 import inspect
-from typing import List
+from typing import List, Dict
 from abc import abstractmethod
 
 import gym
@@ -74,6 +74,14 @@ class AbstractController(ObjBase):
   @abstractmethod
   def step(self) -> np.ndarray:
     return
+  
+  @abstractmethod
+  def init_states(self, observation:Dict[str, np.ndarray], t:float, gripper:bool) -> None:
+    return
+  
+  @abstractmethod
+  def setup_controller(self, optimization: dict):
+    return
 
 
 class AbstractLLM(ObjBase):
@@ -83,6 +91,10 @@ class AbstractLLM(ObjBase):
 
   @abstractmethod
   def run(self):
+    return
+  
+  @abstractmethod
+  def reset(self):
     return
 
 
